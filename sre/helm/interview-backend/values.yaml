@@ -1,14 +1,23 @@
 # Default values for interview-backend
 replicaCount: 1
+env: dev
 
 image:
-  repository: 519551088082.dkr.ecr.us-east-1.amazonaws.com/interview-backend
+  name: interview-backend
+  registry: 519551088082.dkr.ecr.us-east-1.amazonaws.com
+  tag: ""
   pullPolicy: IfNotPresent
-  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
+
+namespace:
+  create: true
+  nameOverride: "interview-backend"
+  labels:
+    team: "backend"
+    istio-injection: enabled
 
 serviceAccount:
   create: true
@@ -16,8 +25,9 @@ serviceAccount:
   name: ""
   automountServiceAccountToken: true
 
-podAnnotations: 
+podAnnotations:
   sidecar.opentelemetry.io/inject: "true"
+  sidecar.istio.io/inject: "true"
 
 podSecurityContext:
   fsGroup: 1000
@@ -140,6 +150,12 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+istio:
+  virtualService:
+    enabled: true
+    timeout: ""
+    retries: {}
   # podAntiAffinity:
   #   preferredDuringSchedulingIgnoredDuringExecution:
   #   - weight: 100

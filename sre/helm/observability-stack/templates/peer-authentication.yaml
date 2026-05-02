@@ -1,0 +1,10 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-mtls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  mtls:
+    mode: STRICT

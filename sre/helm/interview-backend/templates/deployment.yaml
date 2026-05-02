@@ -1,8 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "interview-backend.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "interview-backend.fullname" . }}-deployment
+  namespace: {{ include "interview-backend.namespaceName" . }}
   labels:
     {{- include "interview-backend.labels" . | nindent 4 }}
 spec:
@@ -27,7 +27,7 @@ spec:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
@@ -36,11 +36,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "interview-backend.fullname" . }}-config
-                        {{- if .Values.externalSecrets.enabled }}
-          {{- if .Values.externalSecrets.enabled }}
+            {{- if .Values.externalSecrets.enabled }}
             - secretRef:
                 name: {{ include "interview-backend.fullname" . }}-secrets
-          {{- end }}
+            {{- end }}
           {{- with .Values.probes.startupProbe }}
           startupProbe:
             {{- toYaml . | nindent 12 }}
@@ -55,6 +54,14 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.securityContext.readOnlyRootFilesystem }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /app/tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

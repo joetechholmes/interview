@@ -32,6 +32,20 @@ This assignment will give us insight into your technical expertise, problem-solv
 4. Add relevant observability
 5. Provide clear instructions on how to build and deploy the application, including any prerequisites.
 
+## Local Kubernetes bootstrap
+A helper script is available in `sre/bootstrap-minikube.sh` to:
+- detect and install `minikube` for Linux/macOS
+- start a local minikube cluster
+- install Istio into namespace `istio`
+- install cert-manager into namespace `cert-manager`
+- install External Secrets Operator into namespace `eso`
+
+Run it from the `sre` folder:
+
+```bash
+./bootstrap-minikube.sh
+```
+
 # Considerations
 This is an open-ended exercise for you to showcase what you know!
 

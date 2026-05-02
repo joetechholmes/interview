@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "interview-backend.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
   labels:
     {{- include "interview-backend.labels" . | nindent 4 }}
 spec:

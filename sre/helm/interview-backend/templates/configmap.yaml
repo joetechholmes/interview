@@ -2,10 +2,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "interview-backend.fullname" . }}-config
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
   labels:
     {{- include "interview-backend.labels" . | nindent 4 }}
 data:
   {{- range $key, $value := .Values.configMap }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $key, $value := fromYaml (include "interview-backend.otelResourceAttributes" .) }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}

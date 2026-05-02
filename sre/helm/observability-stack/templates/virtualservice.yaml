@@ -1,0 +1,75 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - grafana
+  http:
+    - route:
+        - destination:
+            host: grafana
+            port:
+              number: 80
+---
+{{- end }}
+{{- if index .Values "mimir-distributed" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: mimir-distributed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - mimir-distributed-nginx
+  http:
+    - route:
+        - destination:
+            host: mimir-distributed-nginx
+            port:
+              number: 80
+---
+{{- end }}
+{{- if .Values.loki.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: loki
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - loki
+  http:
+    - route:
+        - destination:
+            host: loki
+            port:
+              number: 3100
+---
+{{- end }}
+{{- if index .Values "tempo-distributed" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: tempo-distributed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - tempo-distributed-query-frontend
+  http:
+    - route:
+        - destination:
+            host: tempo-distributed-query-frontend
+            port:
+              number: 3200
+{{- end }}

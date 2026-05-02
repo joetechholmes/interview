@@ -1,0 +1,116 @@
+namespace:
+  labels:
+    istio-injection: enabled
+
+mimir-distributed:
+  enabled: true
+  fullnameOverride: mimir-distributed
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  service:
+    annotations: {}
+  minio:
+    enabled: true
+
+loki:
+  enabled: true
+  fullnameOverride: loki
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  service:
+    annotations: {}
+  loki:
+    auth_enabled: false
+  persistence:
+    enabled: true
+    size: 10Gi
+
+tempo-distributed:
+  enabled: true
+  fullnameOverride: tempo-distributed
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  service:
+    annotations: {}
+  minio:
+    enabled: true
+
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  adminPassword: admin
+  service:
+    type: LoadBalancer
+    annotations: {}
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Mimir
+          type: prometheus
+          url: http://mimir-distributed-nginx:80/prometheus
+          access: proxy
+          isDefault: true
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+          access: proxy
+        - name: Tempo
+          type: tempo
+          url: http://tempo-distributed-query-frontend:3200
+          access: proxy
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Mimir
+      kubernetes-pods:
+        gnetId: 6417
+        revision: 1
+        datasource: Mimir
+      prometheus-stats:
+        gnetId: 2
+        revision: 2
+        datasource: Mimir
+
+k8s-monitoring:
+  enabled: true
+  fullnameOverride: k8s-monitoring
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  service:
+    annotations: {}
+  externalServices:
+    prometheus:
+      host: mimir-distributed-nginx
+      port: 80
+    loki:
+      host: loki
+      port: 3100
+    tempo:
+      host: tempo-distributed-query-frontend
+      port: 3200
+  logs:
+    enabled: true
+    cluster_name: minikube
+  metrics:
+    enabled: true
+    cluster_name: minikube
+  traces:
+    enabled: true
+    cluster_name: minikube

@@ -58,3 +58,22 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+
+{{/*
+Sets the Namespaces name
+*/}}
+{{- define "interview-backend.namespaceName" -}}
+{{- if .Values.namespace.nameOverride -}}
+{{- .Values.namespace.nameOverride -}}
+{{- else -}}
+{{- .Release.Namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Creates the resource attribute Environment variable
+*/}}
+{{- define "interview-backend.otelResourceAttributes" -}}
+OTEL_RESOURCE_ATTRIBUTES: {{ print "service.version=" .Chart.AppVersion ",deployment.environment=" .Values.env  | quote }}
+{{- end -}}

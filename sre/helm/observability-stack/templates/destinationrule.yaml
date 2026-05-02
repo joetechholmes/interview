@@ -1,0 +1,59 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: grafana
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if index .Values "mimir-distributed" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: mimir-distributed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: mimir-distributed-nginx
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if .Values.loki.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: loki
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: loki
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if index .Values "tempo-distributed" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: tempo-distributed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: tempo-distributed-query-frontend
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}

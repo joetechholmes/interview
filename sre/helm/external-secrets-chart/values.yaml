@@ -1,0 +1,14 @@
+namespace:
+  labels:
+    istio-injection: enabled
+
+external-secrets:
+  installCRDs: true
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  webhook:
+    podAnnotations:
+      sidecar.istio.io/inject: "false"
+  certController:
+    podAnnotations:
+      sidecar.istio.io/inject: "true"

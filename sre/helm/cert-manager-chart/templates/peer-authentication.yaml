@@ -1,0 +1,10 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "cert-manager-chart.fullname" . }}-mtls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cert-manager-chart.labels" . | nindent 4 }}
+spec:
+  mtls:
+    mode: STRICT

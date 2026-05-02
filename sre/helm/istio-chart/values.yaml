@@ -1,0 +1,10 @@
+base:
+  enabled: true
+
+istiod:
+  enabled: true
+
+gateway:
+  enabled: true
+  name: istio-ingress
+  replicaCount: 1
