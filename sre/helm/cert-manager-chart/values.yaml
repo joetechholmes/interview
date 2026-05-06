@@ -1,0 +1,6 @@
+namespace:
+  labels:
+    istio-injection: disabled
+
+cert-manager:
+  installCRDs: true

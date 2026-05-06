@@ -1,0 +1,64 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "interview-backend.fullname" . }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  host: {{ include "interview-backend.fullname" . }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "interview-backend.fullname" . }}-tempo
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  host: tempo.observability-stack.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "interview-backend.fullname" . }}-prometheus
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  host: observability-stack-prometheus-server.observability-stack.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "interview-backend.fullname" . }}-loki
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  host: loki.observability-stack.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "interview-backend.fullname" . }}-alloy
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  host: observability-stack-receiver.observability-stack.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL

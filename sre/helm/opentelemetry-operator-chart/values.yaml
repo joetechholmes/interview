@@ -1,0 +1,8 @@
+namespace:
+  labels:
+    istio-injection: disabled
+
+opentelemetry-operator:
+  admissionWebhooks:
+    certManager:
+      enabled: true

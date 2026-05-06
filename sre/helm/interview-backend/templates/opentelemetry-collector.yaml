@@ -1,0 +1,15 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: {{ include "interview-backend.fullname" . }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  annotations:
+  {{- with .Values.otelCollector.annotations }}
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  mode: {{ .Values.otelCollector.mode }}
+  config: |
+{{ .Values.otelCollector.config | toYaml | indent 4 }}

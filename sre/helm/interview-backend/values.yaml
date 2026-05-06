@@ -1,0 +1,236 @@
+# Default values for interview-backend
+replicaCount: 1
+env: dev
+
+image:
+  name: interview-backend
+  registry: 519551088082.dkr.ecr.us-east-1.amazonaws.com
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: true
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": hook-failed
+  nameOverride: "interview-backend"
+  labels:
+    team: "backend"
+    istio-injection: enabled
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  automountServiceAccountToken: true
+
+podAnnotations:
+  sidecar.opentelemetry.io/inject: "interview-backend"
+  sidecar.istio.io/inject: "true"
+  proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+probes:
+  startupProbe:
+    httpGet:
+      path: /api/welcome
+      port: http
+    initialDelaySeconds: 5
+    failureThreshold: 30
+    periodSeconds: 2
+  livenessProbe:
+    httpGet:
+      path: /api/welcome
+      port: http
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 1
+  readinessProbe:
+    httpGet:
+      path: /api/welcome
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 3
+    timeoutSeconds: 1
+
+configMap:
+  SPRING_PROFILES_ACTIVE: "default"
+  H2_CONSOLE_ENABLED: "true"
+  MANAGEMENT_SERVER_PORT: "8081"
+  SERVER_PORT: "8080"
+  OTEL_SERVICE_NAME: "interview-backend"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  JAVA_TOOL_OPTIONS: "-javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar"
+
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h0m0s
+  secretStoreRef:
+    name: aws-secretsmanager
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+  - secretKey: my_name
+    remoteRef:
+      key: friendslist
+      property: name.first # Tom
+  - secretKey: first_friend
+    remoteRef:
+      key: friendslist
+      property: friends.1.first # Roger
+
+networkPolicy:
+  enabled: false
+  ingressFrom: []
+  ingress: []
+  egress: []
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: interview.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: interview-tls
+  #    hosts:
+  #      - interview.local
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+rollout:
+  enabled: true
+  strategy:
+    canary:
+      steps:
+        - setWeight: 20
+        - pause:
+            duration: 30s
+        - setWeight: 50
+        - pause:
+            duration: 30s
+
+otelCollector:
+  mode: sidecar
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-failed
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 500
+    exporters:
+      otlp_grpc/tempo:
+        endpoint: tempo.observability-stack.svc.cluster.local:4317
+        tls:
+          insecure: true
+      otlp_grpc/alloy:
+        endpoint: observability-stack-receiver.observability-stack.svc.cluster.local:4317
+        tls:
+          insecure: true
+      otlp_http/loki:
+        endpoint: http://loki.observability-stack.svc.cluster.local:3100/otlp
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [otlp_grpc/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [otlp_grpc/alloy]
+        logs:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [otlp_http/loki]
+
+istio:
+  virtualService:
+    enabled: true
+    timeout: ""
+    retries: {}
+  gateway:
+    enabled: true
+    host: interview-backend.local
+  # podAntiAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #   - weight: 100
+  #     podAffinityTerm:
+  #       labelSelector:
+  #         matchExpressions:
+  #         - key: app
+  #           operator: In
+  #           values:
+  #           - interview-backend
+  #       topologyKey: kubernetes.io/hostname

@@ -1,0 +1,6 @@
+namespace:
+  labels:
+    istio-injection: disabled
+
+external-secrets:
+  installCRDs: true

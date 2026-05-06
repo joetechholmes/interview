@@ -1,0 +1,357 @@
+name: CI Pipeline
+
+# Job dependency chain:
+#
+#   changes ──┬── trivy-scan ── build-push ──┐
+#             │                               ├── terraform-dev-deploy  (PR only)
+#             └── helm-validate ─────────────┘
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      fail_on_vulnerabilities:
+        description: 'Fail on Critical/High vulnerabilities'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      backend:    ${{ steps.result.outputs.backend }}
+      helm_infra: ${{ steps.result.outputs.helm_infra }}
+      helm_app:   ${{ steps.result.outputs.helm_app }}
+      terraform:  ${{ steps.result.outputs.terraform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            helm_infra:
+              - 'sre/helm/**'
+              - '!sre/helm/interview-backend/**'
+            helm_app:
+              - 'sre/helm/interview-backend/**'
+            terraform:
+              - 'sre/terraform/**'
+
+      - name: Set outputs
+        id: result
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "backend=true"     >> $GITHUB_OUTPUT
+            echo "helm_infra=true"  >> $GITHUB_OUTPUT
+            echo "helm_app=true"    >> $GITHUB_OUTPUT
+            echo "terraform=true"   >> $GITHUB_OUTPUT
+          else
+            echo "backend=${{ steps.filter.outputs.backend }}"         >> $GITHUB_OUTPUT
+            echo "helm_infra=${{ steps.filter.outputs.helm_infra }}"   >> $GITHUB_OUTPUT
+            echo "helm_app=${{ steps.filter.outputs.helm_app }}"       >> $GITHUB_OUTPUT
+            echo "terraform=${{ steps.filter.outputs.terraform }}"     >> $GITHUB_OUTPUT
+          fi
+
+  trivy-scan:
+    name: Trivy Code Scan
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './backend'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy filesystem scan (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './backend'
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## 🔒 Trivy Scan Results\n\n';
+            try {
+              const results = JSON.parse(fs.readFileSync('trivy-results.json', 'utf8'));
+              const count = results.Results?.reduce((acc, r) => acc + (r.Vulnerabilities?.length || 0), 0) || 0;
+              if (count > 0) {
+                body += `⚠️ Found **${count}** critical/high vulnerabilities:\n\n`;
+                body += '| Target | Vulnerabilities |\n|--------|-----------------|\n';
+                for (const r of results.Results || []) {
+                  const n = r.Vulnerabilities?.length || 0;
+                  if (n > 0) body += `| ${r.Target} | ${n} |\n`;
+                }
+              } else {
+                body += '✅ No critical or high vulnerabilities found.\n';
+              }
+            } catch {
+              body += 'Unable to parse scan results.\n';
+            }
+            body += '\n<details><summary>Details</summary>\n\nSee [Security tab](https://github.com/${{ github.repository }}/security/code-scanning) for full results.\n</details>';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Check vulnerabilities
+        run: |
+          VULN_COUNT=$(cat trivy-results.json | jq -r '[.Results[]?.Vulnerabilities[]?] | length' 2>/dev/null || echo "0")
+          FAIL_ON_VULNS="${{ github.event.inputs.fail_on_vulnerabilities || 'false' }}"
+          echo "Found ${VULN_COUNT} CRITICAL/HIGH vulnerabilities"
+          if [ "${VULN_COUNT}" -gt 0 ] && [ "${FAIL_ON_VULNS}" = "true" ]; then
+            exit 1
+          fi
+
+  build-push:
+    name: Build and Push to ECR
+    needs: [changes, trivy-scan]
+    if: |
+      always() &&
+      needs.changes.outputs.backend == 'true' &&
+      needs.trivy-scan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    outputs:
+      image_tag: ${{ steps.image.outputs.tag }}
+      image_uri: ${{ steps.image.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set image tag
+        id: image
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          REGISTRY="${{ vars.ECR_REGISTRY }}"
+          REPO="interview-backend"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}-${SHORT_SHA}"
+          else
+            DATE=$(date +%Y-%m-%d)
+            TAG="${SHORT_SHA}-${DATE}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "uri=${REGISTRY}/${REPO}:${TAG}" >> $GITHUB_OUTPUT
+          {
+            echo 'tags<<EOF'
+            echo "${REGISTRY}/${REPO}:${TAG}"
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "${REGISTRY}/${REPO}:pr-${{ github.event.pull_request.number }}"
+            else
+              echo "${REGISTRY}/${REPO}:latest"
+            fi
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          cache-from: type=registry,ref=${{ vars.ECR_REGISTRY }}/interview-backend:latest
+          cache-to: type=inline
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: ${{ steps.image.outputs.uri }}
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          format: 'json'
+          output: 'trivy-container-results.json'
+
+      - name: Report container vulnerability count
+        run: |
+          VULN_COUNT=$(cat trivy-container-results.json | jq -r '[.Results[]?.Vulnerabilities[]?] | length' 2>/dev/null || echo "0")
+          echo "Container scan: ${VULN_COUNT} CRITICAL/HIGH vulnerabilities in ${{ steps.image.outputs.tag }}"
+
+      - name: Update image tag in ArgoCD values
+        if: github.event_name == 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sed -i "s|^  tag:.*|  tag: ${{ steps.image.outputs.tag }}|" \
+            sre/argocd-values/interview-backend-dev.yaml
+          git add sre/argocd-values/interview-backend-dev.yaml
+          git diff --cached --quiet || git commit -m "chore: update dev image tag to ${{ steps.image.outputs.tag }} [skip ci]"
+          git push
+
+  helm-validate:
+    name: Helm Chart Validate
+    needs: changes
+    if: needs.changes.outputs.helm_infra == 'true' || needs.changes.outputs.helm_app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.1.4
+
+      - name: Validate chart
+        run: |
+          helm lint sre/helm/interview-backend/
+          helm template test-release sre/helm/interview-backend/ --debug
+
+  terraform-dev-deploy:
+    name: Terraform Dev Deploy
+    needs: [changes, build-push, helm-validate]
+    # Run when on a PR and all upstream jobs either succeeded or were skipped
+    # (skipped = no relevant file changes). At least one must have succeeded,
+    # or terraform files changed directly.
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      (needs.build-push.result == 'success' || needs.build-push.result == 'skipped') &&
+      (needs.helm-validate.result == 'success' || needs.helm-validate.result == 'skipped') &&
+      (needs.build-push.result == 'success' || needs.changes.outputs.helm_infra == 'true' || needs.changes.outputs.terraform == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.9"
+
+      - name: Terraform Init
+        working-directory: sre/terraform/envs/dev
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCKS_TABLE }}"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.1.4
+
+      - name: Update Helm chart dependencies
+        run: |
+          find sre/helm -maxdepth 1 -mindepth 1 -type d | while read chart_dir; do
+            if [ -f "${chart_dir}/Chart.yaml" ]; then
+              echo "Updating dependencies for ${chart_dir}"
+              helm dependency update "${chart_dir}"
+            fi
+          done
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: sre/terraform/envs/dev
+        env:
+          TF_VAR_admin_iam_arns: '["${{ vars.ADMIN_IAM_ARN }}"]'
+          TF_VAR_git_branch: ${{ github.head_ref }}
+        run: |
+          set -o pipefail
+          terraform plan -no-color -out=tfplan 2>&1 | tee /tmp/plan_output.txt
+        continue-on-error: true
+
+      - name: Terraform Apply
+        id: apply
+        if: steps.plan.outcome == 'success'
+        working-directory: sre/terraform/envs/dev
+        env:
+          TF_VAR_admin_iam_arns: '["${{ vars.ADMIN_IAM_ARN }}"]'
+          TF_VAR_git_branch: ${{ github.head_ref }}
+        run: |
+          set -o pipefail
+          terraform apply -auto-approve -no-color tfplan 2>&1 | tee /tmp/apply_output.txt
+        continue-on-error: true
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const readFile = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return 'Not available'; } };
+            const truncate = (s, n) => s.length > n ? s.slice(0, n) + '\n...(truncated)' : s;
+            const planOutput  = readFile('/tmp/plan_output.txt');
+            const applyOutput = readFile('/tmp/apply_output.txt');
+            const planOutcome  = '${{ steps.plan.outcome }}';
+            const applyOutcome = '${{ steps.apply.outcome }}';
+            const icon = applyOutcome === 'success' ? '✅'
+              : (applyOutcome === 'failure' || planOutcome === 'failure') ? '❌' : '⚠️';
+            let body = `## ${icon} Terraform Dev Deploy\n\n`;
+            body += `**Commit:** \`${{ github.sha }}\`  \n`;
+            body += `**Plan:** \`${planOutcome}\`  |  **Apply:** \`${applyOutcome || 'skipped'}\`\n\n`;
+            body += `<details><summary>Plan Output</summary>\n\n\`\`\`hcl\n${truncate(planOutput, 30000)}\n\`\`\`\n</details>\n`;
+            if (applyOutcome) {
+              body += `\n<details><summary>Apply Output</summary>\n\n\`\`\`\n${truncate(applyOutput, 30000)}\n\`\`\`\n</details>`;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            if (planOutcome === 'failure' || applyOutcome === 'failure') {
+              core.setFailed(`Terraform ${planOutcome === 'failure' ? 'plan' : 'apply'} failed`);
+            }

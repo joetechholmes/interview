@@ -1,0 +1,477 @@
+namespace:
+  labels:
+    istio-injection: enabled
+
+prometheus:
+  enabled: true
+  server:
+    podAnnotations:
+      sidecar.istio.io/inject: "true"
+    retention: 15d
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+    extraFlags:
+      - web.enable-lifecycle
+      - web.enable-remote-write-receiver
+      - enable-feature=otlp-write-receiver
+    extraScrapeConfigs: |
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - localhost:9090
+    service:
+      annotations: {}
+  serverFiles:
+    prometheus.yml:
+      otlp:
+        promote_resource_attributes:
+          - service.instance.id
+          - service.name
+          - service.namespace
+          - service.version
+          - cloud.availability_zone
+          - cloud.region
+          - container.name
+          - deployment.environment
+          - deployment.environment.name
+          - k8s.cluster.name
+          - k8s.container.name
+          - k8s.cronjob.name
+          - k8s.daemonset.name
+          - k8s.deployment.name
+          - k8s.job.name
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.replicaset.name
+          - k8s.statefulset.name
+          - telemetry.sdk.name
+          - telemetry.sdk.language
+          - telemetry.sdk.version
+          - process.runtime.name
+          - process.runtime.version
+          - host.name
+          - os.type
+    alerting_rules.yml:
+      groups:
+        - name: interview-backend.slo
+          interval: 1m
+          rules:
+            - alert: InterviewBackendAvailabilityBreach
+              expr: |
+                (
+                  1 - sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination",response_code=~"5.."}[5m]))
+                    / sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m]))
+                ) * 100 < 99.9
+              for: 2m
+              labels:
+                severity: critical
+                service: interview-backend
+                slo: availability
+              annotations:
+                summary: "Interview Backend availability SLO breached"
+                description: "Availability is {{ $value | printf \"%.3f\" }}% — below the 99.9% SLO target."
+
+            - alert: InterviewBackendErrorRateSLOBreach
+              expr: |
+                sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination",response_code=~"5.."}[5m]))
+                / sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m]))
+                * 100 > 1
+              for: 2m
+              labels:
+                severity: critical
+                service: interview-backend
+                slo: error_rate
+              annotations:
+                summary: "Interview Backend error rate SLO breached"
+                description: "Error rate is {{ $value | printf \"%.2f\" }}% — above the 1% SLO target."
+
+            - alert: InterviewBackendLatencySLOBreach
+              expr: |
+                histogram_quantile(0.99,
+                  sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="interview-backend",reporter="destination"}[5m])) by (le)
+                ) > 500
+              for: 2m
+              labels:
+                severity: warning
+                service: interview-backend
+                slo: latency
+              annotations:
+                summary: "Interview Backend P99 latency SLO breached"
+                description: "P99 latency is {{ $value | printf \"%.0f\" }}ms — above the 500ms SLO target."
+
+            - alert: InterviewBackendNoTraffic
+              expr: |
+                (sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m])) or on() vector(0)) < 0.01
+              for: 5m
+              labels:
+                severity: warning
+                service: interview-backend
+              annotations:
+                summary: "Interview Backend receiving no traffic"
+                description: "Request rate has been below 0.01 RPS for 5 minutes — service may be down or unreachable."
+
+        - name: interview-backend.anomalies
+          interval: 1m
+          rules:
+            - alert: InterviewBackendTrafficSpike
+              expr: |
+                sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m]))
+                > 2 * sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[1h]))
+                and
+                sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m])) > 1
+              for: 3m
+              labels:
+                severity: warning
+                service: interview-backend
+              annotations:
+                summary: "Interview Backend traffic spike detected"
+                description: "Request rate ({{ $value | printf \"%.2f\" }} RPS) is more than 2× the 1-hour baseline."
+
+            - alert: InterviewBackendLatencySpike
+              expr: |
+                histogram_quantile(0.99,
+                  sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="interview-backend",reporter="destination"}[5m])) by (le)
+                )
+                > 3 * histogram_quantile(0.99,
+                  sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="interview-backend",reporter="destination"}[1h])) by (le)
+                )
+                and
+                sum(rate(istio_requests_total{destination_service_name="interview-backend",reporter="destination"}[5m])) > 0.1
+              for: 3m
+              labels:
+                severity: warning
+                service: interview-backend
+              annotations:
+                summary: "Interview Backend latency spike detected"
+                description: "P99 latency ({{ $value | printf \"%.0f\" }}ms) is more than 3× the 1-hour baseline."
+  alertmanager:
+    enabled: true
+    podAnnotations:
+      sidecar.istio.io/inject: "true"
+    persistence:
+      enabled: true
+      size: 2Gi
+    service:
+      annotations: {}
+  alertmanagerFiles:
+    alertmanager.yml:
+      global:
+        resolve_timeout: 5m
+      route:
+        receiver: 'null'
+        group_by: ['alertname', 'service']
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 12h
+        routes:
+          - match:
+              service: interview-backend
+            group_by: ['alertname', 'severity', 'service']
+            routes:
+              - match:
+                  severity: critical
+                receiver: 'null'
+                group_wait: 10s
+                repeat_interval: 1h
+              - match:
+                  severity: warning
+                receiver: 'null'
+                repeat_interval: 4h
+      receivers:
+        - name: 'null'
+      inhibit_rules:
+        - source_match:
+            severity: critical
+            service: interview-backend
+          target_match:
+            severity: warning
+            service: interview-backend
+          equal: ['slo']
+  # Disable sub-charts already provided by k8s-monitoring
+  kube-state-metrics:
+    enabled: false
+  prometheus-node-exporter:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+
+loki:
+  enabled: true
+  fullnameOverride: loki
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  service:
+    annotations: {}
+  deploymentMode: SingleBinary
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: true
+      size: 10Gi
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  tempo:
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+  persistence:
+    enabled: true
+    size: 10Gi
+
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  podAnnotations:
+    sidecar.istio.io/inject: "true"
+  adminPassword: admin
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+  service:
+    type: LoadBalancer
+    annotations: {}
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://observability-stack-prometheus-server:80
+          access: proxy
+          isDefault: true
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+          access: proxy
+        - name: Tempo
+          type: tempo
+          url: http://tempo:3200
+          access: proxy
+        - name: Alertmanager
+          type: alertmanager
+          url: http://observability-stack-alertmanager:9093
+          access: proxy
+          jsonData:
+            implementation: prometheus
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      kubernetes-pods:
+        gnetId: 6417
+        revision: 1
+        datasource: Prometheus
+      prometheus-stats:
+        gnetId: 2
+        revision: 2
+        datasource: Prometheus
+
+k8s-monitoring:
+  enabled: true
+  cluster:
+    name: interview
+    provider: k3s
+  destinations:
+    prometheus:
+      type: prometheus
+      url: http://observability-stack-prometheus-server:80/api/v1/write
+      openTelemetryConversion:
+        resourceToTelemetryConversion: true
+    loki:
+      type: loki
+      url: http://loki:3100/loki/api/v1/push
+    tempo:
+      type: otlp
+      url: http://tempo:4317
+      protocol: grpc
+  telemetryServices:
+    kube-state-metrics:
+      deploy: true
+    node-exporter:
+      deploy: true
+    opencost:
+      deploy: false
+  collectors:
+    alloy-metrics:
+      presets: [clustered, statefulset]
+      extraConfig: |
+        discovery.kubernetes "istiod_endpoints" {
+          role = "endpoints"
+          namespaces {
+            names = ["istio-system"]
+          }
+        }
+
+        discovery.relabel "istiod" {
+          targets = discovery.kubernetes.istiod_endpoints.targets
+          rule {
+            source_labels = ["__meta_kubernetes_service_name", "__meta_kubernetes_endpoint_port_name"]
+            action        = "keep"
+            regex         = "istiod;http-monitoring"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_namespace"]
+            target_label  = "namespace"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_name"]
+            target_label  = "pod"
+          }
+        }
+
+        prometheus.scrape "istiod" {
+          targets         = discovery.relabel.istiod.output
+          forward_to      = [prometheus.remote_write.prometheus.receiver]
+          scrape_interval = "30s"
+        }
+
+        discovery.kubernetes "istio_pods" {
+          role = "pod"
+        }
+
+        discovery.relabel "istio_envoy" {
+          targets = discovery.kubernetes.istio_pods.targets
+          rule {
+            source_labels = ["__meta_kubernetes_pod_annotation_sidecar_istio_io_status"]
+            action        = "keep"
+            regex         = ".+"
+          }
+          rule {
+            source_labels = ["__address__"]
+            regex         = "([^:]+)(?::\\d+)?"
+            replacement   = "$1:15090"
+            target_label  = "__address__"
+          }
+          rule {
+            action = "labelmap"
+            regex  = "__meta_kubernetes_pod_label_(.+)"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_namespace"]
+            target_label  = "namespace"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_name"]
+            target_label  = "pod"
+          }
+        }
+
+        prometheus.relabel "istio_envoy" {
+          forward_to = [prometheus.remote_write.prometheus.receiver]
+          rule {
+            source_labels = ["__name__"]
+            regex         = "istio_.*|envoy_.*|pilot_.*"
+            action        = "keep"
+          }
+        }
+
+        prometheus.scrape "istio_envoy" {
+          targets         = discovery.relabel.istio_envoy.output
+          forward_to      = [prometheus.relabel.istio_envoy.receiver]
+          scrape_interval = "30s"
+        }
+    alloy-logs:
+      presets: [daemonset, filesystem-log-reader]
+    receiver:
+      presets: [daemonset]
+      controller:
+        podAnnotations:
+          k8s.grafana.com/logs.job: integrations/alloy
+          sidecar.istio.io/inject: "true"
+      alloy:
+        extraPorts:
+          - name: otlp-grpc
+            port: 4317
+            targetPort: 4317
+            protocol: TCP
+            appProtocol: grpc
+          - name: otlp-http
+            port: 4318
+            targetPort: 4318
+            protocol: TCP
+            appProtocol: http
+  clusterMetrics:
+    enabled: true
+    collector: alloy-metrics
+    destinations: [prometheus]
+    kube-state-metrics:
+      metricsTuning:
+        useDefaultAllowList: true
+        includeMetrics:
+          - kube_pod_status_ready
+  hostMetrics:
+    enabled: true
+    collector: alloy-metrics
+    destinations: [prometheus]
+    linuxHosts:
+      enabled: true
+      metricsTuning:
+        useIntegrationAllowList: true
+  costMetrics:
+    enabled: false
+  clusterEvents:
+    enabled: true
+    collector: alloy-logs
+    destinations: [loki]
+  podLogsViaLoki:
+    enabled: true
+    collector: alloy-logs
+    destinations: [loki]
+    excludeNamespaces:
+      - interview-backend
+  applicationObservability:
+    enabled: true
+    collector: receiver
+    destinations: [tempo, prometheus]
+    receivers:
+      otlp:
+        grpc:
+          enabled: true
+          port: 4317
+        http:
+          enabled: true
+          port: 4318

@@ -1,0 +1,40 @@
+# Match any file or path named .helmignore
+.helmignore
+
+# Helm dependency artifacts
+charts/
+
+# VCS and CI/CD
+.git/
+.gitignore
+.github/
+.gitlab-ci.yml
+
+# Editor and OS files
+.DS_Store
+*.swp
+*.swo
+.idea/
+*.iml
+*.bak
+*.tmp
+
+# Documentation & Diagrams (keep README.md usually)
+docs/
+*.png
+*.svg
+
+# Sensitive data
+.env
+*secret*
+*.key
+*.pem
+
+# Match any text file
+*.txt
+
+# Match any file under subdir matching temp*
+*/temp*
+
+*/*/temp*
+temp?

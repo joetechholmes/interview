@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "interview-backend.fullname" . }}-pdb
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  minAvailable:  {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "interview-backend.selectorLabels" . | nindent 6 }}
+{{- end -}}

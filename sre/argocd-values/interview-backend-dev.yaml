@@ -1,0 +1,16 @@
+env: eks
+
+image:
+  tag: pr-2-f172683
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+externalSecrets:
+  enabled: false

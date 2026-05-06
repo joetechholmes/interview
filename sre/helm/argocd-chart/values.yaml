@@ -1,0 +1,34 @@
+namespace:
+  labels:
+    istio-injection: disabled
+
+argo-cd:
+  server:
+    service:
+      type: ClusterIP
+
+repo:
+  url: git@github.com:joetechholmes/interview.git
+  secret:
+    useExternalSecret: false
+    externalSecret:
+      refreshInterval: 1h
+      secretStoreRef:
+        name: aws-secretsmanager
+        kind: ClusterSecretStore
+      remoteRef:
+        key: argocd/repo/interview
+        property: sshPrivateKey
+
+apps:
+  interviewBackend:
+    repoURL: git@github.com:joetechholmes/interview.git
+    targetRevision: HEAD
+    chartPath: sre/helm/interview-backend
+    valueFiles:
+      - values.yaml
+      - values-k3s.yaml
+    parameters: []
+    destination:
+      server: https://kubernetes.default.svc
+      namespace: interview-backend

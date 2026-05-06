@@ -1,0 +1,87 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: grafana
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if index .Values "prometheus" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: observability-stack-prometheus-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: observability-stack-prometheus-server
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: observability-stack-prometheus-alertmanager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: observability-stack-prometheus-alertmanager
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if .Values.loki.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: loki
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: loki
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if .Values.tempo.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: tempo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: tempo
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- end }}
+{{- if index .Values "k8s-monitoring" "enabled" }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: observability-stack-receiver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  host: observability-stack-receiver
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}

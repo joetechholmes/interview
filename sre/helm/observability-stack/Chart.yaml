@@ -1,0 +1,22 @@
+apiVersion: v2
+name: observability-stack
+description: A Helm chart for complete observability stack with Grafana, Loki, Prometheus, Tempo, and k8s-monitoring
+type: application
+version: 1.0.1
+appVersion: "1.0.0"
+dependencies:
+  - name: prometheus
+    version: "29.5.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+  - name: loki
+    version: "13.5.0"
+    repository: "https://grafana-community.github.io/helm-charts"
+  - name: tempo
+    version: "2.1.0"
+    repository: "https://grafana-community.github.io/helm-charts"
+  - name: grafana
+    version: "12.3.0"
+    repository: "https://grafana-community.github.io/helm-charts"
+  - name: k8s-monitoring
+    version: "4.0.4"
+    repository: "https://grafana.github.io/helm-charts"

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "interview-backend.fullname" . }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "interview-backend.selectorLabels" . | nindent 4 }}

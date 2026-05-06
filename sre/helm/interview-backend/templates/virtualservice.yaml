@@ -1,0 +1,33 @@
+{{- if .Values.istio.virtualService.enabled -}}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "interview-backend.fullname" . }}
+  namespace: {{ include "interview-backend.namespaceName" . }}
+  labels:
+    {{- include "interview-backend.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ include "interview-backend.fullname" . }}
+    {{- if .Values.istio.gateway.enabled }}
+    - {{ .Values.istio.gateway.host | quote }}
+    {{- end }}
+  {{- if .Values.istio.gateway.enabled }}
+  gateways:
+    - mesh
+    - {{ include "interview-backend.fullname" . }}
+  {{- end }}
+  http:
+    - route:
+        - destination:
+            host: {{ include "interview-backend.fullname" . }}
+            port:
+              number: {{ .Values.service.port }}
+      {{- if .Values.istio.virtualService.timeout }}
+      timeout: {{ .Values.istio.virtualService.timeout }}
+      {{- end }}
+      {{- with .Values.istio.virtualService.retries }}
+      retries:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end -}}

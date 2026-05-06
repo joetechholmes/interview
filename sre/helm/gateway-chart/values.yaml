@@ -1,0 +1,9 @@
+namespace:
+  labels:
+    istio-injection: enabled
+
+gateway:
+  name: istio-ingress
+  replicaCount: 1
+  podAnnotations:
+    inject.istio.io/templates: gateway

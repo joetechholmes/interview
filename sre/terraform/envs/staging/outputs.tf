@@ -1,0 +1,10 @@
+output "configure_kubectl"        { value = module.eks.configure_kubectl }
+output "cluster_endpoint"         { value = module.eks.cluster_endpoint }
+output "eso_irsa_role_arn"        { value = module.eks.eso_irsa_role_arn }
+output "interview_backend_url"    { value = module.eks.interview_backend_url }
+output "grafana_url"              { value = module.eks.grafana_url }
+output "argocd_url"               { value = module.eks.argocd_url }
+output "argocd_initial_password"  { value = module.eks.argocd_initial_password }
+output "argocd_password_secret"   { value = module.eks.argocd_password_secret }
+output "secrets_manager_prereq"   { value = module.eks.secrets_manager_prereq }
+output "dns_propagation_check"    { value = module.eks.dns_propagation_check }

@@ -1,0 +1,11 @@
+base:
+  enabled: true
+
+istiod:
+  enabled: true
+  meshConfig:
+    extensionProviders:
+      - name: otel-tracing
+        opentelemetry:
+          port: 4317
+          service: tempo.observability-stack.svc.cluster.local

@@ -1,0 +1,7 @@
+namespace:
+  labels:
+    istio-injection: disabled
+
+argo-rollouts:
+  dashboard:
+    enabled: true

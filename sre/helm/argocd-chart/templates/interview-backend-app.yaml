@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: interview-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-chart.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.apps.interviewBackend.repoURL }}
+    targetRevision: {{ .Values.apps.interviewBackend.targetRevision }}
+    path: {{ .Values.apps.interviewBackend.chartPath }}
+    helm:
+      valueFiles:
+        {{- toYaml .Values.apps.interviewBackend.valueFiles | nindent 8 }}
+      {{- if .Values.apps.interviewBackend.parameters }}
+      parameters:
+        {{- toYaml .Values.apps.interviewBackend.parameters | nindent 8 }}
+      {{- end }}
+  destination:
+    server: {{ .Values.apps.interviewBackend.destination.server }}
+    namespace: {{ .Values.apps.interviewBackend.destination.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,17 @@
+env: eks
+
+image:
+  # registry is already set to ECR in values.yaml — no override needed.
+  # Update tag via CI/CD (e.g. sed, kustomize, or ArgoCD Image Updater)
+  # after pushing a new image to ECR.
+  tag: latest
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
